@@ -15,7 +15,7 @@ app.include_router(currency.router, prefix="/api/v1", tags=["Currency Rates"])
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["https://qhuube.vercel.app", "http://localhost:3000"],
+    allow_origins=["https://www.qhuube.com", "https://qhuube.com", "https://qhuube.vercel.app", "http://localhost:3000"],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
