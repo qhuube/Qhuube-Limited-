@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-explicit-any */
 import type { FileMeta, UploadState } from "@/app/types"
 import { create } from "zustand"
 import { persist } from "zustand/middleware"
@@ -33,6 +34,7 @@ export const useUploadStore = create<UploadState>()(
             sessionId: null,
             paymentCompleted: false,
             paymentInfo: { completed: false },
+            orderData: {},
 
             setUploadedFile: (file) => set({ uploadedFile: file }),
 
@@ -138,7 +140,26 @@ export const useUploadStore = create<UploadState>()(
                     }
                 }
             },
+            setOrderData: (orderData: any) => {
+                const state = get()
+                set({ orderData: { ...state.orderData, ...orderData } })
+            },
+
+            updateOfferSelection: (offerType: any, price: number) => {
+                set({
+                    orderData: {
+                        offerType,
+                        offerPrice: price,
+                        basePrice: offerType === "vat-registered" ? 69 : 144,
+                    },
+                })
+            },
+
+            clearOrderData: () => {
+                set({ orderData: {} })
+            },
         }),
+
         {
             name: "vat-upload-storage",
             // Only persist essential data, not File objects
@@ -156,6 +177,7 @@ export const useUploadStore = create<UploadState>()(
                 sessionId: state.sessionId,
                 paymentCompleted: state.paymentCompleted,
                 paymentInfo: state.paymentInfo,
+                orderData: state.orderData,
             }),
         },
     ),

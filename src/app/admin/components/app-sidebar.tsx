@@ -35,6 +35,10 @@ const data = {
                     title: "Tax Settings",
                     url: "/admin/tax-settings",
                 },
+                {
+                    title: "Offers",
+                    url: "/admin/offers",
+                }
             ],
         },
     ],

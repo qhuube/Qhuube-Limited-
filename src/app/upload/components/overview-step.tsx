@@ -2,6 +2,8 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 "use client"
 
+import type React from "react"
+
 import { useState, useEffect } from "react"
 import {
   FileText,
@@ -169,24 +171,8 @@ export default function OverviewStep({ onPrevious }: OverviewStepProps) {
     }
   }
 
-
-  const downloadFile = (blob: Blob, filename: string) => {
-    try {
-      saveAs(blob, filename)
-    } catch (error) {
-      // Fallback method if saveAs fails
-      const url = window.URL.createObjectURL(blob)
-      const link = document.createElement("a")
-      link.href = url
-      link.download = filename
-      document.body.appendChild(link)
-      link.click()
-      document.body.removeChild(link)
-      window.URL.revokeObjectURL(url)
-    }
-  }
-
   const downloadVatReportForFile = async (fileName: string) => {
+    setIsDownloadingAll(true)
     setDownloadingFiles((prev) => new Set(prev).add(fileName))
 
     try {
@@ -198,20 +184,24 @@ export default function OverviewStep({ onPrevious }: OverviewStepProps) {
       const formData = new FormData()
       formData.append("user_email", "")
 
-      const response = await axios.post(
+      // Use fetch with arrayBuffer to avoid Safari blob issues
+      const response = await fetch(
         `${process.env.NEXT_PUBLIC_BACKEND_URL}/api/v1/download-vat-report/${sessionId}`,
-        formData,
         {
-          responseType: "blob",
+          method: "POST",
+          body: formData,
         },
       )
 
-      const contentType = response.headers["content-type"]
+      if (!response.ok) {
+        throw new Error(`Server error: ${response.statusText}`)
+      }
 
-      // Handle manual review response (JSON inside blob)
-      if (contentType?.includes("application/json")) {
-        const text = await response.data.text()
-        const json = JSON.parse(text)
+      const contentType = response.headers.get("content-type") || ""
+
+      // Handle JSON (manual review)
+      if (contentType.includes("application/json")) {
+        const json = await response.json()
 
         if (json.status === "manual_review_required") {
           setCurrentManualReviewFile(fileName)
@@ -229,38 +219,52 @@ export default function OverviewStep({ onPrevious }: OverviewStepProps) {
         }
       }
 
-      // Handle ZIP download
-      if (contentType?.includes("application/zip")) {
-        const zip = await JSZip.loadAsync(response.data)
-        const zipFiles = Object.keys(zip.files)
-
-        for (const file of zipFiles) {
-          const fileData = await zip.file(file)?.async("blob")
-          if (fileData) {
-            downloadFile(fileData, file)
-          }
-        }
-
-        toast.success("VAT reports extracted and downloaded successfully")
-        return
+      // Get file name
+      const cd = response.headers.get("content-disposition")
+      let filename = fileName.replace(/\.[^.]+$/, "")
+      if (contentType.includes("application/zip")) {
+        filename += "_vat_reports.zip"
+      } else {
+        filename += "_vat_report.xlsx"
       }
-
-      // Handle regular Excel file
-      const cd = response.headers["content-disposition"]
-      let filename = fileName.replace(/\.[^.]+$/, "") + "_vat_report.xlsx"
-
       if (cd) {
         const match = cd.match(/filename="?([^";]+)"?/i)
         if (match) filename = match[1]
       }
 
-      downloadFile(response.data, filename)
-      toast.success("VAT report downloaded successfully")
+      // ✅ Convert to arrayBuffer first (fixes Safari truncation)
+      const arrayBuffer = await response.arrayBuffer()
+      const blob = new Blob([arrayBuffer], { type: contentType })
+
+      // ✅ Safari-safe download trigger
+      const url = window.URL.createObjectURL(blob)
+      const a = document.createElement("a")
+      a.href = url
+      a.download = filename
+      document.body.appendChild(a)
+
+      // Safari sometimes blocks direct click — use this trick:
+      const isSafari = /^((?!chrome|android).)*safari/i.test(navigator.userAgent)
+      if (isSafari) {
+        window.open(url, "_blank") // opens download in a new tab (works on iOS/macOS Safari)
+      } else {
+        a.click()
+      }
+
+      a.remove()
+      window.URL.revokeObjectURL(url)
+
+      toast.success(
+        contentType.includes("application/zip")
+          ? "VAT ZIP file downloaded successfully"
+          : "VAT report downloaded successfully",
+      )
     } catch (err: any) {
       console.error("Download failed", err)
-      const errorMessage = err?.response?.data?.detail || err.message || "Please try again."
+      const errorMessage = err?.message || "Please try again."
       toast.error(`Failed to download VAT report: ${errorMessage}`)
     } finally {
+      setIsDownloadingAll(false)
       setDownloadingFiles((prev) => {
         const newSet = new Set(prev)
         newSet.delete(fileName)
@@ -268,6 +272,8 @@ export default function OverviewStep({ onPrevious }: OverviewStepProps) {
       })
     }
   }
+
+
 
   const handleDownloadAllReports = async () => {
     if (!uploadedFile) {
@@ -332,7 +338,7 @@ export default function OverviewStep({ onPrevious }: OverviewStepProps) {
   }
 
   interface LoaderProps {
-    messages: string[] 
+    messages: string[]
     interval?: number
   }
 
@@ -365,11 +371,7 @@ export default function OverviewStep({ onPrevious }: OverviewStepProps) {
   if (isCheckingManualReview) {
     return (
       <Loader
-        messages={[
-          "Checking file processing status...",
-          "Still processing, please wait...",
-          "Almost done...",
-        ]}
+        messages={["Checking file processing status...", "Still processing, please wait...", "Almost done..."]}
         interval={1200}
       />
     )
@@ -392,24 +394,19 @@ export default function OverviewStep({ onPrevious }: OverviewStepProps) {
             Your VAT compliance report will be sent to you shortly.
             {/* <span className="font-medium text-gray-900">{reportEmail}</span>  */}
           </p>
-          <p className="text-sm text-gray-500 mb-6">
-            Please check your inbox and spam folder for the confirmation.
-          </p>
+          <p className="text-sm text-gray-500 mb-6">Please check your inbox and spam folder for the confirmation.</p>
 
           {/* Navigation Buttons */}
           <div className="flex flex-col sm:flex-row justify-center gap-3 mt-4">
             {/* <Button
               variant="outline"
               onClick={onPrevious}
-              className="w-full sm:w-auto border-gray-300 text-gray-700 hover:bg-gray-100"
+              className="w-full sm:w-auto border-gray-300 text-gray-700 hover:bg-gray-100 bg-transparent"
             >
               <ArrowLeft className="w-4 h-4 mr-2" />
               Previous Step
             </Button> */}
-            <Button
-              onClick={handleStartNewProcess}
-              className="w-full sm:w-auto bg-sky-600 hover:bg-sky-700 text-white"
-            >
+            <Button onClick={handleStartNewProcess} className="w-full sm:w-auto bg-sky-600 hover:bg-sky-700 text-white">
               <RotateCcw className="w-4 h-4" />
               Start New Process
             </Button>
@@ -419,21 +416,20 @@ export default function OverviewStep({ onPrevious }: OverviewStepProps) {
     )
   }
 
-
   if (showManualReviewForm) {
     return (
-        <ManualReviewForm
-          fileName={currentManualReviewFile}
-          manualReviewCount={manualReviewCount}
-          processedFileData={processedFileData}
-          onEmailSubmit={handleManualReviewEmailSubmit}
-          onCancel={() => {
-            setShowManualReviewForm(false)
-            setCurrentManualReviewFile("")
-            setManualReviewCount(0)
-            setProcessedFileData(null)
-          }}
-        />
+      <ManualReviewForm
+        fileName={currentManualReviewFile}
+        manualReviewCount={manualReviewCount}
+        processedFileData={processedFileData}
+        onEmailSubmit={handleManualReviewEmailSubmit}
+        onCancel={() => {
+          setShowManualReviewForm(false)
+          setCurrentManualReviewFile("")
+          setManualReviewCount(0)
+          setProcessedFileData(null)
+        }}
+      />
     )
   }
 
@@ -568,7 +564,7 @@ export default function OverviewStep({ onPrevious }: OverviewStepProps) {
               className="bg-sky-600 hover:bg-sky-700 text-white py-2 px-4 cursor-pointer sm:px-6 w-full sm:w-auto order-1 sm:order-2"
               onClick={handleStartNewProcess}
             >
-              <RotateCcw className="w-4 h-4 mr-2" />
+              <RotateCcw className="w-4 h-4" />
               Start New Process
             </Button>
           </div>

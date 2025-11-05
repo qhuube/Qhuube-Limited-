@@ -1,8 +1,13 @@
 from typing import Dict, List
-import pandas as pd
+import io, pandas as pd
 import numpy as np
 from app.models.header_model import get_all_headers
 from datetime import date
+from reportlab.lib.pagesizes import A4, landscape
+from reportlab.lib import colors
+from reportlab.platypus import SimpleDocTemplate, Table, TableStyle, Paragraph, Spacer
+from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
+import unicodedata
 
 # Map frontend types to internal Python-friendly types
 TYPE_MAP = {
@@ -202,3 +207,152 @@ def validate_order_date(order_date: date, current_date: date) -> str:
         return "Rejected: Order date is too old, must be within the last quarter."
     else:
         return "Rejected: Order date is in the future, not allowed."
+
+def dataframe_to_pdf(df: pd.DataFrame, pdf_stream: io.BytesIO, title: str):
+    """
+    Generate a professional, print-ready VAT Report PDF (A4 landscape)
+    with all data right-aligned and headers centered.
+    Ensures words are not split mid-word in headers (e.g., 'Country' won't become 'Coun\ntry').
+    """
+
+    # --- Setup document ---
+    doc = SimpleDocTemplate(
+        pdf_stream,
+        pagesize=landscape(A4),
+        leftMargin=30,
+        rightMargin=30,
+        topMargin=30,
+        bottomMargin=30,
+    )
+
+    styles = getSampleStyleSheet()
+
+    # --- Title style ---
+    title_style = ParagraphStyle(
+        "TitleStyle",
+        parent=styles["Title"],
+        fontName="Helvetica-Bold",
+        fontSize=14,
+        alignment=1,  # Center
+        spaceAfter=12,
+    )
+
+    # --- Header style (centered, no breaking inside single words) ---
+    header_style = ParagraphStyle(
+        "HeaderStyle",
+        fontName="Helvetica-Bold",
+        fontSize=8,
+        alignment=1,  # Center
+        leading=10,
+        wordWrap="None",  # allow wrap only between words
+    )
+
+    # --- Cell style (right aligned) ---
+    cell_style = ParagraphStyle(
+        "CellStyle",
+        fontName="Helvetica",
+        fontSize=7,
+        alignment=2,  # Right align
+        leading=9,
+        wordWrap="None",
+    )
+
+    # --- Build title ---
+    elements = [Paragraph(title, title_style), Spacer(1, 8)]
+
+    # --- Prepare Data ---
+    df = df.fillna("")
+
+    # Create header row (no splitting inside single words)
+    header_row = [
+        Paragraph(" ".join(col.split()), header_style)
+        for col in df.columns
+    ]
+
+    # Create data rows
+    data_rows = [
+        [Paragraph(str(cell), cell_style) for cell in row]
+        for row in df.astype(str).values.tolist()
+    ]
+
+    data = [header_row] + data_rows
+
+    # --- Calculate proportional column widths ---
+    page_width, _ = landscape(A4)
+    usable_width = page_width - doc.leftMargin - doc.rightMargin
+
+    avg_lengths = [
+        max(len(str(col)), int(df[col].astype(str).str.len().mean() or 5))
+        for col in df.columns
+    ]
+    total_len = sum(avg_lengths)
+    col_widths = [usable_width * (l / total_len) for l in avg_lengths]
+
+    # Limit column sizes (ensure no narrow columns that force word breaks)
+    min_w, max_w = 70, 120
+    col_widths = [max(min_w, min(w, max_w)) for w in col_widths]
+
+    if "Order Date" in df.columns:
+        idx = list(df.columns).index("Order Date")
+        col_widths[idx] = max(col_widths[idx], 80)
+
+    # Normalize to fit exactly within usable width
+    scale = usable_width / sum(col_widths)
+    col_widths = [w * scale for w in col_widths]
+
+    # --- Build Table ---
+    table = Table(data, colWidths=col_widths, repeatRows=1)
+
+    table.setStyle(TableStyle([
+        # Header formatting
+        ("FONTNAME", (0, 0), (-1, 0), "Helvetica-Bold"),
+        ("FONTSIZE", (0, 0), (-1, 0), 9),
+        ("ALIGN", (0, 0), (-1, 0), "CENTER"),
+        ("VALIGN", (0, 0), (-1, 0), "MIDDLE"),
+        ("BOTTOMPADDING", (0, 0), (-1, 0), 8),
+        ("TOPPADDING", (0, 0), (-1, 0), 6),
+        ("LINEBELOW", (0, 0), (-1, 0), 0.6, colors.black),
+
+        # Data cells formatting
+        ("FONTNAME", (0, 1), (-1, -1), "Helvetica"),
+        ("FONTSIZE", (0, 1), (-1, -1), 8),
+        ("ALIGN", (0, 1), (-1, -1), "RIGHT"),
+        ("VALIGN", (0, 1), (-1, -1), "MIDDLE"),
+        ("TOPPADDING", (0, 1), (-1, -1), 3.5),
+        ("BOTTOMPADDING", (0, 1), (-1, -1), 3.5),
+
+        # Grid lines
+        ("GRID", (0, 0), (-1, -1), 0.25, colors.grey),
+    ]))
+
+    elements.append(table)
+
+    # --- Build PDF ---
+    doc.build(elements)
+    pdf_stream.seek(0)
+    return pdf_stream.getvalue()
+
+
+def normalize_string(value: str) -> str:
+    """
+    Normalize strings to handle platform-specific encoding issues (Mac/iPhone vs Windows/Android).
+    - Removes all Unicode whitespace characters (including non-breaking spaces)
+    - Converts to lowercase
+    - Removes accents and diacritics
+    - Removes any control characters
+    """
+    if not isinstance(value, str):
+        return ""
+    
+    # Replace all Unicode whitespace with regular spaces, then strip
+    value = ''.join(c if not c.isspace() else ' ' for c in value)
+    value = ' '.join(value.split())  # Normalize multiple spaces to single space
+    
+    # Convert to NFD (decomposed) form and remove combining marks (accents)
+    value = unicodedata.normalize('NFD', value)
+    value = ''.join(c for c in value if unicodedata.category(c) != 'Mn')
+    
+    # Convert to lowercase
+    value = value.lower().strip()
+    
+    return value

@@ -23,12 +23,20 @@ interface PaymentInfo {
     completedAt?: number // Timestamp of when payment was completed
 }
 
+export interface OrderData {
+    offerType?: "vat-registered" | "needs-vat-registration"
+    offerPrice?: number
+    basePrice?: number
+    selectedService?: string
+}
+
 export interface UploadState {
     uploadedFile: FileMeta | null // Single file instead of array
     uploadProgress: number // Single progress value instead of record
     sessionId: string | null // Single session ID instead of record
     paymentCompleted: boolean
     paymentInfo: PaymentInfo
+    orderData: OrderData
     setUploadedFile: (file: FileMeta | null) => void
     addUploadedFile: (file: File) => void // Single file instead of array
     setUploadProgress: (progress: number) => void
@@ -39,6 +47,9 @@ export interface UploadState {
     isPaymentValidForSession: () => boolean // Check if payment is valid for current session
     restoreFileObject: () => void // Restore single file object
     resetForNewFile: () => void // Reset everything for new file upload
+    setOrderData: (orderData: Partial<OrderData>) => void
+    updateOfferSelection: (offerType: "vat-registered" | "needs-vat-registration", price: number) => void
+    clearOrderData: () => void
 }
 
 
@@ -94,7 +105,7 @@ export interface ValidationIssue {
     details?: {
         columnName?: string
         dataType?: string
-        headerLabel?:string
+        headerLabel?: string
         missingRows?: string[]
         invalidRows?: string[]
         hasMoreRows?: boolean
@@ -104,7 +115,7 @@ export interface ValidationIssue {
         percentage?: number
         description?: string
         expectedType?: string
-        issueType?:string
+        issueType?: string
     }
 }
 

@@ -2,33 +2,19 @@
 import type React from "react"
 import { useState, useCallback } from "react"
 import { motion } from "framer-motion"
-import { FileText, FileSpreadsheet, X, ArrowRight, ArrowLeft } from "lucide-react"
+import { X, ArrowRight, ArrowLeft } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { fadeInLeft } from "@/lib/animation"
 import { useFileUpload } from "../hooks/useFileUpload"
 import { useRouter } from "next/navigation"
-import { UploadStepProps } from "@/app/types"
+import type { UploadStepProps } from "@/app/types"
+import { getFileIcon, formatFileSize } from "@/app/utils" // Import the missing functions
 
 const UploadStep = ({ onNext }: UploadStepProps) => {
   const [dragActive, setDragActive] = useState(false)
+  const [isAmazonFile, setIsAmazonFile] = useState(false)
   const router = useRouter()
   const { uploadedFile, uploadProgress, handleFile, removeFile } = useFileUpload()
-
-  const getFileIcon = (fileName: string) => {
-    const ext = fileName?.split(".").pop()?.toLowerCase()
-    return ext === "csv" || ext === "txt" ? (
-      <FileText className="w-4 h-4 text-sky-600" />
-    ) : (
-      <FileSpreadsheet className="w-4 h-4 text-green-600" />
-    )
-  }
-
-  const formatFileSize = (bytes: number) => {
-    if (bytes === 0) return "0 Bytes"
-    const sizes = ["Bytes", "KB", "MB", "GB"]
-    const i = Math.floor(Math.log(bytes) / Math.log(1024))
-    return `${(bytes / Math.pow(1024, i)).toFixed(2)} ${sizes[i]}`
-  }
 
   const handleDrag = useCallback((e: React.DragEvent) => {
     e.preventDefault()
@@ -55,6 +41,7 @@ const UploadStep = ({ onNext }: UploadStepProps) => {
   }
 
   const fileUploaded = uploadedFile && uploadProgress >= 100
+  const canContinue = fileUploaded
 
   return (
     <>
@@ -64,9 +51,7 @@ const UploadStep = ({ onNext }: UploadStepProps) => {
             {/* Header */}
             {!uploadedFile && (
               <motion.div variants={fadeInLeft} className="text-center px-2">
-                <h1 className="text-xl sm:text-2xl md:text-3xl lg:text-4xl font-bold text-gray-900 mb-2">
-                  Upload Your File
-                </h1>
+                <h1 className="text-2xl sm:text-3xl font-bold text-gray-900 mb-2">Upload Your File</h1>
                 <p className="text-sm sm:text-base text-gray-600 leading-relaxed">
                   Drag and drop your file or click to browse. We support CSV, XLS, and XLSX formats.
                 </p>
@@ -78,11 +63,12 @@ const UploadStep = ({ onNext }: UploadStepProps) => {
               variants={fadeInLeft}
               initial="hidden"
               animate="show"
-              className="bg-white rounded-lg sm:rounded-xl shadow-sm border border-gray-200 p-4 sm:p-6"
+              className="bg-white rounded-xl shadow-sm border border-gray-200 p-4 sm:p-6"
             >
               <div
-                className={`relative border-2 border-dashed rounded-lg text-center transition-all duration-300 ${dragActive ? "border-sky-500 bg-sky-50" : "border-gray-300 hover:border-sky-400 hover:bg-gray-50"
-                  } h-40 sm:h-48 md:h-52 lg:h-44 p-4 sm:p-6`}
+                className={`relative border-2 border-dashed rounded-lg text-center transition-all duration-300 ${
+                  dragActive ? "border-sky-500 bg-sky-50" : "border-gray-300 hover:border-sky-400 hover:bg-gray-50"
+                } h-44 flex flex-col items-center justify-center`}
                 onDragEnter={handleDrag}
                 onDragLeave={handleDrag}
                 onDragOver={handleDrag}
@@ -94,35 +80,43 @@ const UploadStep = ({ onNext }: UploadStepProps) => {
                   onChange={handleFileInput}
                   className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
                 />
-                <div className="h-full flex flex-col items-center justify-center space-y-2 sm:space-y-3">
-                  <div className="flex items-center justify-center">
-                    <div className="w-12 h-12 sm:w-14 sm:h-14 bg-sky-100 rounded-full flex items-center justify-center">
-                      <svg
-                        className="w-6 h-6 sm:w-7 sm:h-7 text-sky-600"
-                        fill="none"
-                        stroke="currentColor"
-                        viewBox="0 0 24 24"
-                      >
-                        <path
-                          strokeLinecap="round"
-                          strokeLinejoin="round"
-                          strokeWidth={2}
-                          d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12"
-                        />
-                      </svg>
-                    </div>
+                <div className="flex flex-col items-center justify-center space-y-2">
+                  <div className="w-12 h-12 bg-sky-100 rounded-full flex items-center justify-center">
+                    <svg className="w-6 h-6 text-sky-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                        strokeWidth={2}
+                        d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12"
+                      />
+                    </svg>
                   </div>
-                  <div className="text-center px-2">
-                    <h3 className="text-sm sm:text-base lg:text-lg font-semibold text-gray-900 mb-1">
-                      <span className="hidden sm:inline">Drag & drop file or </span>
-                      <span className="text-sky-600 cursor-pointer hover:underline">
-                        {!uploadedFile ? "Choose file" : "Replace file"}
-                      </span>
-                    </h3>
-                    <p className="text-xs sm:text-sm text-gray-500">CSV, XLS, XLSX</p>
-                  </div>
+                  <p className="text-sm sm:text-base font-semibold text-gray-900">
+                    <span className="hidden sm:inline">Drag & drop file or </span>
+                    <span className="text-sky-600 cursor-pointer hover:underline">
+                      {!uploadedFile ? "Choose file" : "Replace file"}
+                    </span>
+                  </p>
+                  <p className="text-xs text-gray-500">CSV, XLS, XLSX</p>
                 </div>
               </div>
+            </motion.div>
+
+            <motion.div
+              variants={fadeInLeft}
+              initial="hidden"
+              animate="show"
+              className="bg-white rounded-xl shadow-sm border border-gray-200 p-4 sm:p-6"
+            >
+              <label className="flex items-center space-x-3 cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={isAmazonFile}
+                  onChange={(e) => setIsAmazonFile(e.target.checked)}
+                  className="w-5 h-5 rounded border-gray-300 text-sky-600 focus:ring-sky-500 cursor-pointer"
+                />
+                <span className="text-sm sm:text-base font-medium text-gray-900">This is an Amazon file</span>
+              </label>
             </motion.div>
 
             {/* Upload Progress */}
@@ -131,9 +125,9 @@ const UploadStep = ({ onNext }: UploadStepProps) => {
                 variants={fadeInLeft}
                 initial="hidden"
                 animate="show"
-                className="bg-white rounded-lg sm:rounded-xl shadow-sm border border-gray-200 p-4 sm:p-6"
+                className="bg-white rounded-xl shadow-sm border border-gray-200 p-4 sm:p-6"
               >
-                <h3 className="text-base sm:text-lg font-semibold text-gray-900 mb-3 sm:mb-4">Uploading File</h3>
+                <h3 className="text-base sm:text-lg font-semibold text-gray-900 mb-3">Uploading File</h3>
                 <div className="space-y-3">
                   <div className="space-y-2">
                     <div className="flex items-center justify-between gap-2">
@@ -159,9 +153,9 @@ const UploadStep = ({ onNext }: UploadStepProps) => {
                 variants={fadeInLeft}
                 initial="hidden"
                 animate="show"
-                className="bg-white rounded-lg sm:rounded-xl shadow-sm border border-gray-200 p-4 sm:p-6"
+                className="bg-white rounded-xl shadow-sm border border-gray-200 p-4 sm:p-6"
               >
-                <h3 className="text-base sm:text-lg font-semibold text-gray-900 mb-3 sm:mb-4">Uploaded File</h3>
+                <h3 className="text-base sm:text-lg font-semibold text-gray-900 mb-3">Uploaded File</h3>
                 <div className="flex items-center justify-between p-3 bg-gray-50 rounded-lg border border-gray-200 hover:bg-gray-100 transition-colors">
                   <div className="flex items-center gap-3 flex-1 min-w-0">
                     <div className="flex-shrink-0">{getFileIcon(uploadedFile.name)}</div>
@@ -193,17 +187,18 @@ const UploadStep = ({ onNext }: UploadStepProps) => {
                 onClick={() => router.push("/")}
                 className="w-full sm:w-auto bg-white border-gray-300 text-gray-700 hover:bg-gray-50 px-6 py-2.5"
               >
-                <ArrowLeft className="w-4 h-4 mr-2" />
+                <ArrowLeft className="w-4 h-4" />
                 Back
               </Button>
               <Button
-                className={`w-full sm:w-auto sm:min-w-[140px] px-6 py-2.5 text-white transition-all ${fileUploaded ? "bg-sky-600 hover:bg-sky-700" : "bg-gray-400 cursor-not-allowed"
-                  }`}
-                disabled={!fileUploaded}
+                className={`w-full sm:w-auto px-6 py-2.5 text-white transition-all ${
+                  canContinue ? "bg-sky-600 hover:bg-sky-700" : "bg-gray-400 cursor-not-allowed"
+                }`}
+                disabled={!canContinue}
                 onClick={onNext}
               >
                 Continue
-                <ArrowRight className="w-4 h-4 ml-2" />
+                <ArrowRight className="w-4 h-4" />
               </Button>
             </motion.div>
           </div>
