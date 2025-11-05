@@ -12,7 +12,7 @@ import { getFileIcon, formatFileSize } from "@/app/utils" // Import the missing 
 
 const UploadStep = ({ onNext }: UploadStepProps) => {
   const [dragActive, setDragActive] = useState(false)
-  const [isAmazonFile, setIsAmazonFile] = useState(false)
+  // const [isAmazonFile, setIsAmazonFile] = useState(false)
   const router = useRouter()
   const { uploadedFile, uploadProgress, handleFile, removeFile } = useFileUpload()
 
@@ -100,23 +100,6 @@ const UploadStep = ({ onNext }: UploadStepProps) => {
                   <p className="text-xs text-gray-500">CSV, XLS, XLSX</p>
                 </div>
               </div>
-            </motion.div>
-
-            <motion.div
-              variants={fadeInLeft}
-              initial="hidden"
-              animate="show"
-              className="bg-white rounded-xl shadow-sm border border-gray-200 p-4 sm:p-6"
-            >
-              <label className="flex items-center space-x-3 cursor-pointer">
-                <input
-                  type="checkbox"
-                  checked={isAmazonFile}
-                  onChange={(e) => setIsAmazonFile(e.target.checked)}
-                  className="w-5 h-5 rounded border-gray-300 text-sky-600 focus:ring-sky-500 cursor-pointer"
-                />
-                <span className="text-sm sm:text-base font-medium text-gray-900">This is an Amazon file</span>
-              </label>
             </motion.div>
 
             {/* Upload Progress */}
