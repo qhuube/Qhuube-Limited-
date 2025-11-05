@@ -14,15 +14,12 @@ export async function POST(req: NextRequest) {
         }
 
         const session = await stripe.checkout.sessions.create({
-            mode: 'payment',
-            payment_method_types: [
-                'card',
-                'ideal',
-                'bancontact',
-                'sofort',
-                'giropay',
-                'eps',
-            ],
+          mode: 'payment',
+
+automatic_payment_methods: {
+  enabled: true,
+  allow_redirects: 'always',
+}, 
             line_items: [
                 {
                     price_data: {
