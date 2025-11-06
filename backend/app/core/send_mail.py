@@ -1,3 +1,20 @@
+# backend/app/core/send_mail.py
+
+from typing import Dict, List, Optional
+import os
+import base64
+import mimetypes
+import httpx
+from dotenv import load_dotenv
+
+from app.core.helper import generate_manual_review_summary
+
+load_dotenv()
+
+
+# ----------------------------------------------------------------------
+# Low-level Postmark sender
+# ----------------------------------------------------------------------
 async def send_email_via_postmark_api(
     to_email: str,
     subject: str,
@@ -5,18 +22,27 @@ async def send_email_via_postmark_api(
     text_content: Optional[str] = None,
     attachments: Optional[List[Dict]] = None,
     from_email: Optional[str] = None,
-    from_name: Optional[str] = None
+    from_name: Optional[str] = None,
 ) -> bool:
+    """
+    Send an email via Postmark's Email API.
+    Env vars expected (Render):
+      - POSTMARK_SERVER_API_TOKEN (required)
+      - POSTMARK_BASE_URL (default: https://api.postmarkapp.com)
+      - POSTMARK_STREAM (default: outbound)
+      - REPLY_TO_EMAIL (optional)
+      - FROM_EMAIL (default: noreply@yourdomain.com)
+      - POSTMARK_FROM_NAME (default: Qhuube Tax System)
+    """
     try:
-        # Read your Render env names
+        # Auth + config
         server_token = os.getenv("POSTMARK_SERVER_API_TOKEN") or os.getenv("POSTMARK_SERVER_TOKEN")
         base_url = os.getenv("POSTMARK_BASE_URL", "https://api.postmarkapp.com")
         message_stream = os.getenv("POSTMARK_STREAM", "outbound")
         reply_to_email = os.getenv("REPLY_TO_EMAIL")
 
-        # Use your FROM_EMAIL variable
         default_from_email = os.getenv("FROM_EMAIL", "noreply@yourdomain.com")
-        default_from_name  = os.getenv("POSTMARK_FROM_NAME", "Qhuube Tax System")
+        default_from_name = os.getenv("POSTMARK_FROM_NAME", "Qhuube Tax System")
 
         if not server_token:
             print("✗ POSTMARK_SERVER_API_TOKEN / POSTMARK_SERVER_TOKEN not configured.")
@@ -24,18 +50,20 @@ async def send_email_via_postmark_api(
 
         sender = f'{from_name or default_from_name} <{from_email or default_from_email}>'
 
-        data = {
+        # Build payload
+        data: Dict = {
             "From": sender,
             "To": to_email,
             "Subject": subject,
             "HtmlBody": html_content,
-            "MessageStream": message_stream,   # ← important for Postmark streams
+            "MessageStream": message_stream,
         }
         if text_content:
             data["TextBody"] = text_content
         if reply_to_email:
             data["ReplyTo"] = reply_to_email
 
+        # Attachments (convert caller dicts to Postmark shape)
         if attachments:
             pm_attachments = []
             for a in attachments:
@@ -43,9 +71,12 @@ async def send_email_via_postmark_api(
                 content_b64 = a.get("content")
                 ctype = a.get("content_type")
                 if not ctype:
-                    import mimetypes
-                    ctype = (mimetypes.guess_type(name)[0] or "application/octet-stream")
-                pm_attachments.append({"Name": name, "Content": content_b64, "ContentType": ctype})
+                    ctype = mimetypes.guess_type(name)[0] or "application/octet-stream"
+                pm_attachments.append({
+                    "Name": name,
+                    "Content": content_b64,
+                    "ContentType": ctype,
+                })
             if pm_attachments:
                 data["Attachments"] = pm_attachments
 
@@ -55,6 +86,7 @@ async def send_email_via_postmark_api(
             "X-Postmark-Server-Token": server_token,
         }
 
+        print(f"Postmark: to={to_email} stream={message_stream}")
         async with httpx.AsyncClient(timeout=30.0) as client:
             resp = await client.post(f"{base_url}/email", json=data, headers=headers)
 
@@ -71,11 +103,15 @@ async def send_email_via_postmark_api(
         return False
 
 
-
-# -----------------------------
-# Your higher-level helpers
-# -----------------------------
-async def send_manual_vat_email(to_email: str, user_email: str, attachment: bytes, manual_review_rows: List[Dict]):
+# ----------------------------------------------------------------------
+# Higher-level helpers (same interfaces you were already using)
+# ----------------------------------------------------------------------
+async def send_manual_vat_email(
+    to_email: str,
+    user_email: str,
+    attachment: bytes,
+    manual_review_rows: List[Dict]
+):
     """Send manual VAT processing email using Postmark API"""
     try:
         print(f"Attempting to send manual VAT email to {to_email} via Postmark")
@@ -124,7 +160,7 @@ async def send_manual_vat_email(to_email: str, user_email: str, attachment: byte
         Qhuube Tax System
         """
 
-        # Attachment (xlsx)
+        # XLSX attachment
         attachment_b64 = base64.b64encode(attachment).decode()
         attachments = [{
             "content": attachment_b64,
@@ -138,7 +174,7 @@ async def send_manual_vat_email(to_email: str, user_email: str, attachment: byte
             html_content=html_content,
             text_content=text_content,
             attachments=attachments,
-            from_email=os.getenv("POSTMARK_FROM_EMAIL"),
+            from_email=os.getenv("FROM_EMAIL"),
             from_name=os.getenv("POSTMARK_FROM_NAME", "Qhuube Tax System"),
         )
 
@@ -149,11 +185,15 @@ async def send_manual_vat_email(to_email: str, user_email: str, attachment: byte
 
     except Exception as e:
         print(f"✗ Failed to send manual VAT email to {to_email}: {e}")
-        import traceback
-        traceback.print_exc()
+        import traceback; traceback.print_exc()
 
 
-async def send_vat_report_email_safely(to_email: str, file_name: str, file_content: bytes, original_filename: str):
+async def send_vat_report_email_safely(
+    to_email: str,
+    file_name: str,
+    file_content: bytes,
+    original_filename: str
+):
     """Send VAT report email safely using Postmark API"""
     try:
         await send_vat_report_email_internal(to_email, file_name, file_content, original_filename)
@@ -164,7 +204,12 @@ async def send_vat_report_email_safely(to_email: str, file_name: str, file_conte
         traceback.print_exc()
 
 
-async def send_vat_report_email_internal(to_email: str, file_name: str, file_content: bytes, original_filename: str):
+async def send_vat_report_email_internal(
+    to_email: str,
+    file_name: str,
+    file_content: bytes,
+    original_filename: str
+):
     """Send VAT report email using Postmark API"""
     try:
         print(f"Attempting to send VAT report email to {to_email} via Postmark")
@@ -212,7 +257,6 @@ async def send_vat_report_email_internal(to_email: str, file_name: str, file_con
         attachments = [{
             "content": attachment_b64,
             "name": file_name,
-            # guess type by extension (zip/xlsx) or fallback
             "content_type": mimetypes.guess_type(file_name)[0] or "application/octet-stream",
         }]
 
@@ -222,7 +266,7 @@ async def send_vat_report_email_internal(to_email: str, file_name: str, file_con
             html_content=html_content,
             text_content=text_content,
             attachments=attachments,
-            from_email=os.getenv("POSTMARK_FROM_EMAIL"),
+            from_email=os.getenv("FROM_EMAIL"),
             from_name="Team Qhuube",
         )
 
@@ -234,8 +278,7 @@ async def send_vat_report_email_internal(to_email: str, file_name: str, file_con
 
     except Exception as e:
         print(f"✗ Failed to send VAT report email to {to_email}: {e}")
-        import traceback
-        traceback.print_exc()
+        import traceback; traceback.print_exc()
         raise
 
 
@@ -259,7 +302,7 @@ async def send_email(to_email: str, subject: str, body: str):
             subject=subject,
             html_content=html_content,
             text_content=body,
-            from_email=os.getenv("POSTMARK_FROM_EMAIL"),
+            from_email=os.getenv("FROM_EMAIL"),
             from_name=os.getenv("POSTMARK_FROM_NAME", "Qhuube Tax System"),
         )
 
@@ -270,8 +313,7 @@ async def send_email(to_email: str, subject: str, body: str):
 
     except Exception as e:
         print(f"✗ Unexpected error in send_email: {e}")
-        import traceback
-        traceback.print_exc()
+        import traceback; traceback.print_exc()
 
 
 async def send_quarter_issues_email(
@@ -319,7 +361,7 @@ async def send_quarter_issues_email(
             html_content=html_content,
             text_content=body,
             attachments=attachments,
-            from_email=os.getenv("POSTMARK_FROM_EMAIL"),
+            from_email=os.getenv("FROM_EMAIL"),
             from_name=os.getenv("POSTMARK_FROM_NAME", "Qhuube Tax System"),
         )
 
@@ -333,6 +375,5 @@ async def send_quarter_issues_email(
 
     except Exception as e:
         print(f"✗ Failed to send quarter issues email to {to_email}: {e}")
-        import traceback
-        traceback.print_exc()
+        import traceback; traceback.print_exc()
         return
