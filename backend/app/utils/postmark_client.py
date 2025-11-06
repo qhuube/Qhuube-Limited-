@@ -5,6 +5,7 @@ from postmarker.core import PostmarkClient
 POSTMARK_TOKEN = os.getenv("POSTMARK_SERVER_API_TOKEN")
 FROM_EMAIL = os.getenv("FROM_EMAIL")
 MESSAGE_STREAM = os.getenv("POSTMARK_STREAM", "outbound")
+REPLY_TO = os.getenv("REPLY_TO")
 
 _client = PostmarkClient(server_token=POSTMARK_TOKEN) if POSTMARK_TOKEN else None
 
@@ -23,6 +24,7 @@ def send_html(to: str, subject: str, html: str, text: Optional[str] = None) -> s
         HtmlBody=html,
         TextBody=text,
         MessageStream=MESSAGE_STREAM,
+        ReplyTo=REPLY_TO if REPLY_TO else None,
     )
     return res["MessageID"]
 
@@ -42,6 +44,7 @@ def send_with_attachment(
         TextBody=text,
         Attachments=attachments,
         MessageStream=MESSAGE_STREAM,
+        ReplyTo=REPLY_TO if REPLY_TO else None,
     )
     return res["MessageID"]
 
