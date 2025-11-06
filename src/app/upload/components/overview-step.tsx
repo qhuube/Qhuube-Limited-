@@ -438,19 +438,50 @@ export default function OverviewStep({ onPrevious }: OverviewStepProps) {
                       className="flex-1 py-2 lg:h-10 text-sm sm:text-base"
                     />
                     <Button
-                      onClick={handleSendReportEmail}
-                      disabled={!isValidEmail(reportEmail) || isReportEmailSending}
-                      className="bg-purple-600 hover:bg-purple-700 text-white h-10 px-4 sm:px-6 w-full sm:w-auto"
-                    >
-                      {isReportEmailSending ? (
-                        <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
-                      ) : (
-                        <>
-                          <Mail className="w-4 h-4" />
-                          <span className="hidden sm:inline">Send</span>
-                        </>
-                      )}
-                    </Button>
+  onClick={async () => {
+    if (!reportEmail || !isValidEmail(reportEmail)) {
+      toast.error("Please enter a valid email address");
+      return;
+    }
+
+    setIsReportEmailSending(true);
+    try {
+      if (!uploadedFile || !sessionId) {
+        toast.error("No valid session found for the uploaded file");
+        return;
+      }
+
+      const formData = new FormData();
+      formData.append("user_email", reportEmail);
+      formData.append("file_name", uploadedFile.name);
+
+      await axios.post(
+        `${process.env.NEXT_PUBLIC_BACKEND_URL}/api/v1/send-vat-report-email/${sessionId}`,
+        formData,
+        { headers: { "Content-Type": "multipart/form-data" } }
+      );
+
+      toast.success(`Successfully sent report to ${reportEmail}`);
+    } catch (error: any) {
+      console.error("Failed to send email:", error);
+      toast.error(`Failed to send email: ${error?.message || "Please try again later"}`);
+    } finally {
+      setIsReportEmailSending(false);
+    }
+  }}
+  disabled={!isValidEmail(reportEmail) || isReportEmailSending}
+  className="bg-purple-600 hover:bg-purple-700 text-white h-10 px-4 sm:px-6 w-full sm:w-auto"
+>
+  {isReportEmailSending ? (
+    <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
+  ) : (
+    <>
+      <Mail className="w-4 h-4" />
+      <span className="hidden sm:inline">Send</span>
+    </>
+  )}
+</Button>
+
                   </div>
                 </div>
               </CardContent>
