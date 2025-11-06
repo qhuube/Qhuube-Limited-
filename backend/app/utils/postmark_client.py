@@ -1,4 +1,5 @@
 # backend/app/utils/postmark_client.py
+import os
 
 POSTMARK_TOKEN  = os.getenv("POSTMARK_SERVER_API_TOKEN")
 FROM_EMAIL      = os.getenv("FROM_EMAIL")
