@@ -274,38 +274,46 @@ export default function OverviewStep({ onPrevious }: OverviewStepProps) {
   }
 
   const handleDownloadAllReports = async () => {
-   const handleSendReportEmail = async () => {
-  if (!reportEmail || !isValidEmail(reportEmail)) {
-    toast.error("Please enter a valid email address");
-    return;
+    if (!uploadedFile) {
+      toast.error("No processed file to download")
+      return
+    }
+    await downloadVatReportForFile(uploadedFile.name)
   }
 
-  setIsReportEmailSending(true);
-
-  try {
-    if (!uploadedFile || !sessionId) {
-      toast.error("No valid session found for the uploaded file");
-      return;
+  const handleSendReportEmail = async () => {
+    if (!reportEmail || !isValidEmail(reportEmail)) {
+      toast.error("Please enter a valid email address")
+      return
     }
 
-    const formData = new FormData();
-    formData.append("user_email", reportEmail);
-    formData.append("file_name", uploadedFile.name);
+    setIsReportEmailSending(true)
 
-    const response = await axios.post(
-      `${process.env.NEXT_PUBLIC_BACKEND_URL}/api/v1/send-vat-report-email/${sessionId}`,
-      formData,
-      { headers: { "Content-Type": "multipart/form-data" } }
-    );
+    try {
+      if (!uploadedFile || !sessionId) {
+        toast.error("No valid session found for the uploaded file")
+        return
+      }
 
-    toast.success(`Successfully sent report to ${reportEmail}`);
-  } catch (error: any) {
-    console.error("Failed to send email:", error);
-    toast.error(`Failed to send email: ${error?.message || "Please try again later"}`);
-  } finally {
-    setIsReportEmailSending(false);
+      const formData = new FormData()
+      formData.append("user_email", reportEmail)
+      formData.append("file_name", uploadedFile.name)
+
+      const response = await axios.post(
+        `${process.env.NEXT_PUBLIC_BACKEND_URL}/api/v1/send-vat-report-email/${sessionId}`,
+        formData,
+        { headers: { "Content-Type": "multipart/form-data" } },
+      )
+
+      toast.success(`Successfully sent report to ${reportEmail}`)
+    } catch (error: any) {
+      console.error("Failed to send email:", error)
+      toast.error(`Failed to send email: ${error?.message || "Please try again later"}`)
+    } finally {
+      setIsReportEmailSending(false)
+    }
   }
-};
+
     
   const getFileIcon = (fileName: string) => {
     const ext = fileName?.split(".").pop()?.toLowerCase()
