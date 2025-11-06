@@ -1141,7 +1141,7 @@ async def send_manual_review_admin_email(
         # ===== Send email in background =====
         background_tasks.add_task(
             send_manual_vat_email,
-            "mailer@xtechon.com",  # From email
+            "connect@qhuube.com",  # From email
             user_email,  # Admin email
             final_manual_email_stream.getvalue(),
             manual_review_rows_request,
@@ -1412,7 +1412,7 @@ async def notify_admin_quarter_issues(payload: AdminNotifyRequest):
 
         # Send email with attachment for quarter issues
         await send_quarter_issues_email(
-            to_email="mailer@xtechon.com",  # Admin email
+            to_email="connect@qhuube.com",  # Admin email
             subject=subject,
             body=body,
             attachment=excel_stream.getvalue(),
