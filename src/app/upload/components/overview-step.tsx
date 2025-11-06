@@ -22,8 +22,6 @@ import { toast } from "sonner"
 import { Label } from "@/components/ui/label"
 import { useRouter } from "next/navigation"
 import { useUploadStore } from "@/store/uploadStore"
-import JSZip from "jszip"
-import saveAs from "file-saver"
 import axios from "axios"
 import ManualReviewForm from "./manual-review-form"
 
@@ -32,7 +30,7 @@ interface OverviewStepProps {
 }
 
 export default function OverviewStep({ onPrevious }: OverviewStepProps) {
-  const { uploadedFile, sessionId, setUploadedFile, setPaymentCompleted, resetForNewFile } = useUploadStore()
+  const { uploadedFile, sessionId, resetForNewFile } = useUploadStore()
 
   // Email for sending reports to users
   const [reportEmail, setReportEmail] = useState("")
@@ -42,7 +40,6 @@ export default function OverviewStep({ onPrevious }: OverviewStepProps) {
   // Download states
   const [downloadingFiles, setDownloadingFiles] = useState<Set<string>>(new Set())
   const [isDownloadingAll, setIsDownloadingAll] = useState(false)
-  const [downloadProgress, setDownloadProgress] = useState(0)
 
   const [showManualReviewForm, setShowManualReviewForm] = useState(false)
   const [currentManualReviewFile, setCurrentManualReviewFile] = useState<string>("")
@@ -50,18 +47,12 @@ export default function OverviewStep({ onPrevious }: OverviewStepProps) {
   const [processedFileData, setProcessedFileData] = useState<any>(null)
 
   const [isCheckingManualReview, setIsCheckingManualReview] = useState(true)
-  const [manualReviewFiles, setManualReviewFiles] = useState<Set<string>>(new Set())
 
   const router = useRouter()
 
   useEffect(() => {
     const checkManualReviewStatus = async () => {
-      if (!uploadedFile) {
-        setIsCheckingManualReview(false)
-        return
-      }
-
-      if (!sessionId) {
+      if (!uploadedFile || !sessionId) {
         setIsCheckingManualReview(false)
         return
       }
@@ -78,7 +69,6 @@ export default function OverviewStep({ onPrevious }: OverviewStepProps) {
 
         const contentType = response.headers["content-type"]
 
-        // If JSON, manual review required
         if (contentType?.includes("application/json")) {
           const text = await response.data.text()
           const json = JSON.parse(text)
@@ -100,31 +90,27 @@ export default function OverviewStep({ onPrevious }: OverviewStepProps) {
     checkManualReviewStatus()
   }, [uploadedFile, sessionId])
 
-  const isValidEmail = (email: string) => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.trim())
-
-  const sendAdminManualReviewEmail = async (adminEmail: string, fileName: string, processedData: any) => {
-    try {
-      if (!sessionId) throw new Error("Session not found for this file")
-
-      const formData = new FormData()
-      formData.append("user_email", adminEmail)
-      formData.append("file_name", fileName)
-      formData.append("processed_data", JSON.stringify(processedData))
-
-      const response = await axios.post(
-        `${process.env.NEXT_PUBLIC_BACKEND_URL}/api/v1/send-manual-review-admin-email/${sessionId}`,
-        formData,
-        { headers: { "Content-Type": "multipart/form-data" } }
-      )
-
-      return response.data
-    } catch (error: any) {
-      console.error("Failed to send admin manual review email:", error)
-      throw error
-    }
+  function isValidEmail(email: string) {
+    return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.trim())
   }
 
-  const handleManualReviewEmailSubmit = async (adminEmail: string) => {
+  async function sendAdminManualReviewEmail(adminEmail: string, fileName: string, processedData: any) {
+    if (!sessionId) throw new Error("Session not found for this file")
+
+    const formData = new FormData()
+    formData.append("user_email", adminEmail)
+    formData.append("file_name", fileName)
+    formData.append("processed_data", JSON.stringify(processedData))
+
+    const res = await axios.post(
+      `${process.env.NEXT_PUBLIC_BACKEND_URL}/api/v1/send-manual-review-admin-email/${sessionId}`,
+      formData,
+      { headers: { "Content-Type": "multipart/form-data" } }
+    )
+    return res.data
+  }
+
+  async function handleManualReviewEmailSubmit(adminEmail: string) {
     if (!adminEmail) {
       toast.error("Please enter a valid email address")
       return
@@ -146,7 +132,7 @@ export default function OverviewStep({ onPrevious }: OverviewStepProps) {
     }
   }
 
-  const downloadVatReportForFile = async (fileName: string) => {
+  async function downloadVatReportForFile(fileName: string) {
     setIsDownloadingAll(true)
     setDownloadingFiles((prev) => new Set(prev).add(fileName))
 
@@ -168,7 +154,6 @@ export default function OverviewStep({ onPrevious }: OverviewStepProps) {
 
       const contentType = response.headers.get("content-type") || ""
 
-      // JSON => manual review branch
       if (contentType.includes("application/json")) {
         const json = await response.json()
         if (json.status === "manual_review_required") {
@@ -221,15 +206,15 @@ export default function OverviewStep({ onPrevious }: OverviewStepProps) {
     } finally {
       setIsDownloadingAll(false)
       setDownloadingFiles((prev) => {
-        const newSet = new Set(prev)
-        newSet.delete(fileName)
-        return newSet
+        const s = new Set(prev)
+        s.delete(fileName)
+        return s
       })
     }
   }
 
-  // --- handlers (must be inside the component and NOT nested) ---
-  const handleDownloadAllReports = async () => {
+  // ---------- Handlers (hoisted function declarations) ----------
+  async function handleDownloadAllReports() {
     if (!uploadedFile) {
       toast.error("No processed file to download")
       return
@@ -237,7 +222,7 @@ export default function OverviewStep({ onPrevious }: OverviewStepProps) {
     await downloadVatReportForFile(uploadedFile.name)
   }
 
-  const handleSendReportEmail = async () => {
+  async function handleSendReportEmail() {
     if (!reportEmail || !isValidEmail(reportEmail)) {
       toast.error("Please enter a valid email address")
       return
@@ -269,8 +254,9 @@ export default function OverviewStep({ onPrevious }: OverviewStepProps) {
       setIsReportEmailSending(false)
     }
   }
+  // ----------------------------------------------------------------
 
-  const getFileIcon = (fileName: string) => {
+  function getFileIcon(fileName: string) {
     const ext = fileName?.split(".").pop()?.toLowerCase()
     return ext === "csv" || ext === "txt" ? (
       <FileTextIcon className="w-5 h-5 sm:w-6 sm:h-6 text-sky-600" />
@@ -279,7 +265,7 @@ export default function OverviewStep({ onPrevious }: OverviewStepProps) {
     )
   }
 
-  const handleStartNewProcess = () => {
+  function handleStartNewProcess() {
     resetForNewFile()
     setReportEmail("")
     router.push("/upload?step=1")
@@ -315,7 +301,12 @@ export default function OverviewStep({ onPrevious }: OverviewStepProps) {
   }
 
   if (isCheckingManualReview) {
-    return <Loader messages={["Checking file processing status...", "Still processing, please wait...", "Almost done..."]} interval={1200} />
+    return (
+      <Loader
+        messages={["Checking file processing status...", "Still processing, please wait...", "Almost done..."]}
+        interval={1200}
+      />
+    )
   }
 
   if (reportEmailSent) {
