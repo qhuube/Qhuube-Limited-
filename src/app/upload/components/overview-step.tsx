@@ -276,51 +276,53 @@ export default function OverviewStep({ onPrevious }: OverviewStepProps) {
 
 
   const handleDownloadAllReports = async () => {
-    if (!uploadedFile) {
-      toast.error("No file available for download")
-      return
-    }
-
-    await downloadVatReportForFile(uploadedFile.name)
+   if (!reportEmail || !isValidEmail(reportEmail)) {
+    toast.error("Please enter a valid email address")
+    return
+  }
+  if (!uploadedFile || !sessionId) {
+    toast.error("No valid session found for the uploaded file")
+    return
   }
 
-  const handleSendReportEmail = async () => {
-    if (!reportEmail || !isValidEmail(reportEmail)) {
-      toast.error("Please enter a valid email address")
-      return
-    }
+  setIsReportEmailSending(true)
 
-    setIsReportEmailSending(true)
+  try {
+    // Call the Python backend directly — JSON body, no sessionId in the path
+    const res = await fetch(
+      `${process.env.NEXT_PUBLIC_BACKEND_URL}/api/v1/send-vat-report-email`,
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          to: reportEmail,
 
-    try {
-      if (!uploadedFile || !sessionId) {
-        toast.error("No valid session found for the uploaded file")
-        return
+          // IMPORTANT: provide either zip_url OR zip_path.
+          // If you have a server file path available, pass it as zip_path.
+          // If not, pass a downloadable URL where the backend can fetch the ZIP.
+          // Example placeholder filename (adjust if you know the real name).
+          filename: `VAT-Report-${uploadedFile.name.replace(/\.[^.]+$/, "")}.zip`,
+
+          // Provide one of these:
+          // zip_path: "/ABSOLUTE/PATH/TO/VAT-Report.zip",
+          // or, if you serve the zip via a GET link, use:
+          // zip_url: "https://your-storage/....zip"
+        }),
       }
+    )
 
-      const formData = new FormData()
-      formData.append("user_email", reportEmail)
-      formData.append("file_name", uploadedFile.name)
+    const data = await res.json()
+    if (!res.ok) throw new Error(data.detail || "Email send failed")
 
-      const response = await axios.post(
-        `${process.env.NEXT_PUBLIC_BACKEND_URL}/api/v1/send-vat-report-email/${sessionId}`,
-        formData,
-        {
-          headers: {
-            "Content-Type": "multipart/form-data",
-          },
-        },
-      )
-
-      toast.success(`Successfully sent report to ${reportEmail}`)
-    } catch (error: any) {
-      console.error("Failed to send email:", error)
-      toast.error(`Failed to send email: ${error?.message || "Please try again later"}`)
-    } finally {
-      setIsReportEmailSending(false)
-    }
+    toast.success(`Successfully sent report to ${reportEmail}`)
+    setReportEmailSent(true)
+  } catch (error: any) {
+    console.error("Failed to send email:", error)
+    toast.error(`Failed to send email: ${error?.message || "Please try again later"}`)
+  } finally {
+    setIsReportEmailSending(false)
   }
-
+}
   const getFileIcon = (fileName: string) => {
     const ext = fileName?.split(".").pop()?.toLowerCase()
     return ext === "csv" || ext === "txt" ? (
