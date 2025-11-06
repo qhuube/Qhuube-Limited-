@@ -3,7 +3,6 @@
 "use client"
 
 import type React from "react"
-
 import { useState, useEffect } from "react"
 import {
   FileText,
@@ -62,39 +61,29 @@ export default function OverviewStep({ onPrevious }: OverviewStepProps) {
         return
       }
 
-      console.log("[v0] Checking manual review status for file:", uploadedFile.name)
-
       if (!sessionId) {
-        console.log("[v0] No session ID found for file:", uploadedFile.name)
         setIsCheckingManualReview(false)
         return
       }
 
       try {
-        console.log("[v0] Checking manual review status for:", uploadedFile.name, "with session:", sessionId)
-
         const formData = new FormData()
         formData.append("user_email", "")
 
         const response = await axios.post(
           `${process.env.NEXT_PUBLIC_BACKEND_URL}/api/v1/download-vat-report/${sessionId}`,
           formData,
-          {
-            responseType: "blob",
-          },
+          { responseType: "blob" }
         )
 
         const contentType = response.headers["content-type"]
-        console.log("[v0] Response content type for", uploadedFile.name, ":", contentType)
 
-        // Check if response is JSON (manual review required)
+        // If JSON, manual review required
         if (contentType?.includes("application/json")) {
           const text = await response.data.text()
           const json = JSON.parse(text)
-          console.log("[v0] JSON response for", uploadedFile.name, ":", json)
 
           if (json.status === "manual_review_required") {
-            console.log("[v0] Manual review required for:", uploadedFile.name)
             setCurrentManualReviewFile(uploadedFile.name)
             setManualReviewCount(json.manual_review_count || 1)
             setProcessedFileData(json.manual_review_rows || [])
@@ -111,15 +100,11 @@ export default function OverviewStep({ onPrevious }: OverviewStepProps) {
     checkManualReviewStatus()
   }, [uploadedFile, sessionId])
 
-  const isValidEmail = (email: string) => {
-    return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.trim())
-  }
+  const isValidEmail = (email: string) => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.trim())
 
   const sendAdminManualReviewEmail = async (adminEmail: string, fileName: string, processedData: any) => {
     try {
-      if (!sessionId) {
-        throw new Error("Session not found for this file")
-      }
+      if (!sessionId) throw new Error("Session not found for this file")
 
       const formData = new FormData()
       formData.append("user_email", adminEmail)
@@ -129,11 +114,7 @@ export default function OverviewStep({ onPrevious }: OverviewStepProps) {
       const response = await axios.post(
         `${process.env.NEXT_PUBLIC_BACKEND_URL}/api/v1/send-manual-review-admin-email/${sessionId}`,
         formData,
-        {
-          headers: {
-            "Content-Type": "multipart/form-data",
-          },
-        },
+        { headers: { "Content-Type": "multipart/form-data" } }
       )
 
       return response.data
@@ -151,23 +132,17 @@ export default function OverviewStep({ onPrevious }: OverviewStepProps) {
 
     try {
       await sendAdminManualReviewEmail(adminEmail, currentManualReviewFile, processedFileData)
-
       setReportEmailSent(true)
       toast.success(
-        `Manual review request submitted! Admin will receive the processed file and you'll get the VAT report for ${currentManualReviewFile} within 24 hours.`,
+        `Manual review request submitted! Admin will receive the processed file and you'll get the VAT report for ${currentManualReviewFile} within 24 hours.`
       )
-
       setShowManualReviewForm(false)
       setCurrentManualReviewFile("")
       setManualReviewCount(0)
       setProcessedFileData(null)
     } catch (error: any) {
-      console.error("Failed to submit manual review email:", error)
-
       const errorMessage = error?.response?.data?.detail || error?.message || "Please try again."
-
       toast.error(`Failed to submit manual review request: ${errorMessage}`)
-      throw error
     }
   }
 
@@ -184,25 +159,18 @@ export default function OverviewStep({ onPrevious }: OverviewStepProps) {
       const formData = new FormData()
       formData.append("user_email", "")
 
-      // Use fetch with arrayBuffer to avoid Safari blob issues
       const response = await fetch(
         `${process.env.NEXT_PUBLIC_BACKEND_URL}/api/v1/download-vat-report/${sessionId}`,
-        {
-          method: "POST",
-          body: formData,
-        },
+        { method: "POST", body: formData }
       )
 
-      if (!response.ok) {
-        throw new Error(`Server error: ${response.statusText}`)
-      }
+      if (!response.ok) throw new Error(`Server error: ${response.statusText}`)
 
       const contentType = response.headers.get("content-type") || ""
 
-      // Handle JSON (manual review)
+      // JSON => manual review branch
       if (contentType.includes("application/json")) {
         const json = await response.json()
-
         if (json.status === "manual_review_required") {
           setCurrentManualReviewFile(fileName)
           setManualReviewCount(json.manual_review_count || 1)
@@ -213,43 +181,31 @@ export default function OverviewStep({ onPrevious }: OverviewStepProps) {
           toast.success(json.message)
           return
         } else {
-          console.warn("Unexpected JSON response:", json)
           toast.error("Received unexpected response from server.")
           return
         }
       }
 
-      // Get file name
       const cd = response.headers.get("content-disposition")
       let filename = fileName.replace(/\.[^.]+$/, "")
-      if (contentType.includes("application/zip")) {
-        filename += "_vat_reports.zip"
-      } else {
-        filename += "_vat_report.xlsx"
-      }
+      filename += contentType.includes("application/zip") ? "_vat_reports.zip" : "_vat_report.xlsx"
       if (cd) {
         const match = cd.match(/filename="?([^";]+)"?/i)
         if (match) filename = match[1]
       }
 
-      // ✅ Convert to arrayBuffer first (fixes Safari truncation)
       const arrayBuffer = await response.arrayBuffer()
       const blob = new Blob([arrayBuffer], { type: contentType })
 
-      // ✅ Safari-safe download trigger
       const url = window.URL.createObjectURL(blob)
       const a = document.createElement("a")
       a.href = url
       a.download = filename
       document.body.appendChild(a)
 
-      // Safari sometimes blocks direct click — use this trick:
       const isSafari = /^((?!chrome|android).)*safari/i.test(navigator.userAgent)
-      if (isSafari) {
-        window.open(url, "_blank") // opens download in a new tab (works on iOS/macOS Safari)
-      } else {
-        a.click()
-      }
+      if (isSafari) window.open(url, "_blank")
+      else a.click()
 
       a.remove()
       window.URL.revokeObjectURL(url)
@@ -257,12 +213,11 @@ export default function OverviewStep({ onPrevious }: OverviewStepProps) {
       toast.success(
         contentType.includes("application/zip")
           ? "VAT ZIP file downloaded successfully"
-          : "VAT report downloaded successfully",
+          : "VAT report downloaded successfully"
       )
     } catch (err: any) {
       console.error("Download failed", err)
-      const errorMessage = err?.message || "Please try again."
-      toast.error(`Failed to download VAT report: ${errorMessage}`)
+      toast.error(`Failed to download VAT report: ${err?.message || "Please try again."}`)
     } finally {
       setIsDownloadingAll(false)
       setDownloadingFiles((prev) => {
@@ -273,6 +228,7 @@ export default function OverviewStep({ onPrevious }: OverviewStepProps) {
     }
   }
 
+  // --- handlers (must be inside the component and NOT nested) ---
   const handleDownloadAllReports = async () => {
     if (!uploadedFile) {
       toast.error("No processed file to download")
@@ -299,10 +255,10 @@ export default function OverviewStep({ onPrevious }: OverviewStepProps) {
       formData.append("user_email", reportEmail)
       formData.append("file_name", uploadedFile.name)
 
-      const response = await axios.post(
+      await axios.post(
         `${process.env.NEXT_PUBLIC_BACKEND_URL}/api/v1/send-vat-report-email/${sessionId}`,
         formData,
-        { headers: { "Content-Type": "multipart/form-data" } },
+        { headers: { "Content-Type": "multipart/form-data" } }
       )
 
       toast.success(`Successfully sent report to ${reportEmail}`)
@@ -314,7 +270,6 @@ export default function OverviewStep({ onPrevious }: OverviewStepProps) {
     }
   }
 
-    
   const getFileIcon = (fileName: string) => {
     const ext = fileName?.split(".").pop()?.toLowerCase()
     return ext === "csv" || ext === "txt" ? (
@@ -325,7 +280,6 @@ export default function OverviewStep({ onPrevious }: OverviewStepProps) {
   }
 
   const handleStartNewProcess = () => {
-    console.log("[v0] Starting new process - resetting all data")
     resetForNewFile()
     setReportEmail("")
     router.push("/upload?step=1")
@@ -343,18 +297,16 @@ export default function OverviewStep({ onPrevious }: OverviewStepProps) {
       const timer = setInterval(() => {
         setCurrentMessageIndex((prev) => (prev + 1) % messages.length)
       }, interval)
-
       return () => clearInterval(timer)
     }, [messages, interval])
 
     return (
       <div className="flex items-center justify-center min-h-[600px] bg-white">
         <div className="text-center">
-          {/* Loader animation */}
           <div className="flex justify-center space-x-2 mb-4">
-            <span className="w-3 h-3 bg-sky-600 rounded-full animate-bounce"></span>
-            <span className="w-3 h-3 bg-sky-600 rounded-full animate-bounce animation-delay-200"></span>
-            <span className="w-3 h-3 bg-sky-600 rounded-full animate-bounce animation-delay-400"></span>
+            <span className="w-3 h-3 rounded-full bg-sky-600 animate-bounce" />
+            <span className="w-3 h-3 rounded-full bg-sky-600 animate-bounce animation-delay-200" />
+            <span className="w-3 h-3 rounded-full bg-sky-600 animate-bounce animation-delay-400" />
           </div>
           <p className="text-gray-600 text-base">{messages[currentMessageIndex]}</p>
         </div>
@@ -363,43 +315,22 @@ export default function OverviewStep({ onPrevious }: OverviewStepProps) {
   }
 
   if (isCheckingManualReview) {
-    return (
-      <Loader
-        messages={["Checking file processing status...", "Still processing, please wait...", "Almost done..."]}
-        interval={1200}
-      />
-    )
+    return <Loader messages={["Checking file processing status...", "Still processing, please wait...", "Almost done..."]} interval={1200} />
   }
 
   if (reportEmailSent) {
     return (
       <div className="flex items-center justify-center mt-28 px-4">
         <div className="w-full max-w-md bg-white border border-gray-200 rounded-2xl shadow-lg p-8 text-center">
-          {/* Success Icon */}
           <div className="flex justify-center mb-6">
             <div className="bg-green-100 rounded-full p-5">
               <CheckCircle className="w-12 h-12 text-green-600" />
             </div>
           </div>
-
-          {/* Success Message */}
           <h2 className="text-2xl font-bold text-green-800 mb-2">Email Sent Successfully!</h2>
-          <p className="text-gray-700 mb-1">
-            Your VAT compliance report will be sent to you shortly.
-            {/* <span className="font-medium text-gray-900">{reportEmail}</span>  */}
-          </p>
+          <p className="text-gray-700 mb-1">Your VAT compliance report will be sent to you shortly.</p>
           <p className="text-sm text-gray-500 mb-6">Please check your inbox and spam folder for the confirmation.</p>
-
-          {/* Navigation Buttons */}
           <div className="flex flex-col sm:flex-row justify-center gap-3 mt-4">
-            {/* <Button
-              variant="outline"
-              onClick={onPrevious}
-              className="w-full sm:w-auto border-gray-300 text-gray-700 hover:bg-gray-100 bg-transparent"
-            >
-              <ArrowLeft className="w-4 h-4 mr-2" />
-              Previous Step
-            </Button> */}
             <Button onClick={handleStartNewProcess} className="w-full sm:w-auto bg-sky-600 hover:bg-sky-700 text-white">
               <RotateCcw className="w-4 h-4" />
               Start New Process
@@ -431,18 +362,14 @@ export default function OverviewStep({ onPrevious }: OverviewStepProps) {
     <div className="py-4 sm:py-6 lg:py-8 mt-20 xl:mt-6">
       <div className="mx-auto px-4 sm:px-6 lg:px-8">
         <div className="max-w-full mx-auto">
-          {/* Header */}
           <div className="text-center mb-6 lg:mb-8">
             <h1 className="text-2xl sm:text-3xl lg:text-4xl font-bold text-gray-900 mb-2">Processing Complete</h1>
             <p className="text-sm sm:text-base text-gray-600 max-w-2xl mx-auto">
-              Your VAT compliance processing has been completed successfully. Review the results and download your
-              report.
+              Your VAT compliance processing has been completed successfully. Review the results and download your report.
             </p>
           </div>
 
-          {/* Main Content Grid */}
           <div className="grid grid-cols-1 xl:grid-cols-2 gap-6 lg:gap-8 mb-6 lg:mb-8 lg:px-10">
-            {/* Files Processed */}
             <Card className="border border-gray-200 shadow-md rounded-xl">
               <CardContent className="p-4 sm:p-6">
                 <h3 className="font-semibold text-gray-900 mb-4 flex items-center gap-2 text-base sm:text-lg">
@@ -470,7 +397,6 @@ export default function OverviewStep({ onPrevious }: OverviewStepProps) {
               </CardContent>
             </Card>
 
-            {/* Download & Email */}
             <Card className="border border-gray-200 shadow-md rounded-xl">
               <CardContent className="p-4 sm:p-6">
                 <h3 className="font-semibold text-gray-900 mb-4 flex items-center gap-2 text-base sm:text-lg">
@@ -478,7 +404,6 @@ export default function OverviewStep({ onPrevious }: OverviewStepProps) {
                   Download Report
                 </h3>
 
-                {/* Download Buttons */}
                 <div className="space-y-4 mb-6">
                   {uploadedFile && (
                     <div className="space-y-3">
@@ -503,7 +428,6 @@ export default function OverviewStep({ onPrevious }: OverviewStepProps) {
                   )}
                 </div>
 
-                {/* Email Section */}
                 <div className="border-t pt-4 sm:pt-6">
                   <Label
                     htmlFor="report-email"
@@ -512,9 +436,7 @@ export default function OverviewStep({ onPrevious }: OverviewStepProps) {
                     <Mail className="w-4 h-4" />
                     Email Report to User
                   </Label>
-                  <p className="text-xs text-gray-500 mb-3">
-                    Send the processed VAT report to a specific email address
-                  </p>
+                  <p className="text-xs text-gray-500 mb-3">Send the processed VAT report to a specific email address</p>
                   <div className="flex flex-col sm:flex-row gap-2 sm:gap-3">
                     <Input
                       id="report-email"
@@ -544,7 +466,6 @@ export default function OverviewStep({ onPrevious }: OverviewStepProps) {
             </Card>
           </div>
 
-          {/* Navigation */}
           <div className="flex flex-col sm:flex-row justify-between items-center gap-4 lg:px-10">
             <Button
               variant="outline"
