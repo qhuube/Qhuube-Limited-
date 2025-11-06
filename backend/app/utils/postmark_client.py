@@ -5,6 +5,7 @@ from postmarker.core import PostmarkClient
 POSTMARK_TOKEN = os.getenv("POSTMARK_SERVER_API_TOKEN")
 FROM_EMAIL = os.getenv("FROM_EMAIL")
 MESSAGE_STREAM = os.getenv("POSTMARK_STREAM", "outbound")
+REPLY_TO       = os.getenv("REPLY_TO_EMAIL", "connect@qhuube.com")
 
 _client = PostmarkClient(server_token=POSTMARK_TOKEN) if POSTMARK_TOKEN else None
 
